@@ -1,0 +1,8 @@
+# Ignore WandB directory
+wandb/
+
+# Ignore results directory
+results/
+
+# Ignore Python cache directory
+__pycache__/
