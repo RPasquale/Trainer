@@ -10,6 +10,8 @@ import os
 import argparse
 from gpt import GPT, GPTConfig
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 def plot_losses(loss_dict, output_dir, dataset_name):
     plt.figure(figsize=(10, 5))
     plt.plot(loss_dict['train_loss'], label='Train Loss')
@@ -24,9 +26,11 @@ def plot_losses(loss_dict, output_dir, dataset_name):
 def main(num_loops=1, dataset_name=None, model_type="gpt2"):
     # Load your custom model
     if model_type == "custom":
-        model = GPT(GPTConfig())  # Replace this with your model's configuration if necessary
+        model = GPT(GPTConfig(vocab_size=50304))
+        model.load_weights(r'C:\Users\Admin\MODELS\best_model.pt')
     else:
         model = AutoModelForCausalLM.from_pretrained("gpt2")
+    model.to(device)
     output_dir = "./results"
     training_args = TrainingArguments(
         output_dir=output_dir,
@@ -38,6 +42,7 @@ def main(num_loops=1, dataset_name=None, model_type="gpt2"):
         weight_decay=0.01,
         save_steps=10_000,
         save_total_limit=2,
+        remove_unused_columns=False,  # Ensure that no columns are removed
     )
 
     if dataset_name:
@@ -55,30 +60,26 @@ def main(num_loops=1, dataset_name=None, model_type="gpt2"):
 
             dataset, columns, task = load_dataset_by_config(config)
             processed_dataset = get_data_loader(dataset, columns, task)
-            
-            # Remove only columns that exist in the dataset
-            columns_to_remove = [col for col in processed_dataset.column_names if col in ["input_text", "target_text"]]
-            
+
+            # Tokenize the dataset
             def tokenize_and_align_labels(examples):
                 tokenized_inputs = tokenizer(examples["input_text"], truncation=True, padding="max_length", max_length=512)
-                tokenized_inputs["labels"] = tokenizer(examples["target_text"], truncation=True, padding="max_length", max_length=512)["input_ids"]
+                tokenized_labels = tokenizer(examples["target_text"], truncation=True, padding="max_length", max_length=512)
+                tokenized_inputs["labels"] = tokenized_labels["input_ids"]
                 return tokenized_inputs
-            
-            tokenized_dataset = processed_dataset.map(tokenize_and_align_labels, batched=True, remove_columns=columns_to_remove)
+
+            tokenized_dataset = processed_dataset.map(tokenize_and_align_labels, batched=True, remove_columns=processed_dataset.column_names)
 
             data_loader = DataLoader(tokenized_dataset, collate_fn=data_collator, batch_size=training_args.per_device_train_batch_size)
 
             loss_dict = defaultdict(list)
-            
+
             class CustomTrainer(Trainer):
                 def compute_loss(self, model, inputs, return_outputs=False):
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
                     labels = inputs.get("labels")
-                    outputs = model(**inputs)
-                    logits = outputs.get("logits")
-                    shift_logits = logits[..., :-1, :].contiguous()
-                    shift_labels = labels[..., 1:].contiguous()
-                    loss_fct = torch.nn.CrossEntropyLoss()
-                    loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+                    outputs = model(inputs['input_ids'], labels=labels)
+                    loss = outputs[1] if return_outputs else outputs[1]
                     return (loss, outputs) if return_outputs else loss
 
                 def on_log(self, args, state, control, logs=None, **kwargs):
@@ -98,6 +99,7 @@ def main(num_loops=1, dataset_name=None, model_type="gpt2"):
             trainer.evaluate()
 
             plot_losses(loss_dict, output_dir, dataset_config_name)
+            model.save_pretrained(os.path.join(output_dir, f"{dataset_config_name}_model"))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train GPT-2 on specified datasets.")
@@ -107,10 +109,3 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     main(num_loops=args.num_loops, dataset_name=args.dataset_name, model_type=args.model_type)
-
-# To train on all datasets with multiple loops using the custom model:
-# python train.py --num_loops 2 --model_type custom
-
-# To train on a specific dataset using the custom model:
-# python train.py --dataset_name "alespalla/chatbot_instruction_prompts" --num_loops 2 --model_type custom
-

@@ -75,6 +75,15 @@ class GPTConfig:
     n_head: int = 16
     n_embd: int = 1024
 
+    def to_dict(self):
+        return {
+            "block_size": self.block_size,
+            "vocab_size": self.vocab_size,
+            "n_layer": self.n_layer,
+            "n_head": self.n_head,
+            "n_embd": self.n_embd,
+        }
+
 
 class GPT(nn.Module):
     def __init__(self, config):
@@ -103,20 +112,20 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx, targets=None):
-        B, T = idx.size()
+    def forward(self, input_ids, labels=None):
+        B, T = input_ids.size()
         assert T <= self.config.block_size, f"Cannot forward sequence of length {T}, block size is only {self.config.block_size}"
-        pos = torch.arange(0, T, dtype=torch.long, device=idx.device)
+        pos = torch.arange(0, T, dtype=torch.long, device=input_ids.device)
         pos_emb = self.transformer.wpe(pos)
-        tok_emb = self.transformer.wte(idx)
+        tok_emb = self.transformer.wte(input_ids)
         x = tok_emb + pos_emb
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
         logits = self.lm_head(x)
         loss = None
-        if targets is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+        if labels is not None:
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1))
         return logits, loss
 
     @classmethod
@@ -179,10 +188,3 @@ class GPT(nn.Module):
     def load_weights(self, path):
         self.load_state_dict(torch.load(path))
         self.eval()
-
-
-# Usage example (in another script)
-# from gpt import GPT, GPTConfig
-# model = GPT(GPTConfig(vocab_size=50304))
-# model.load_weights(r'C:\Users\Admin\MODELS\best_model.pt')
-# model.to(device)

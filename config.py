@@ -19,6 +19,7 @@ datasets_config = [
     },
     {
         "name": "instruction-pretrain/ft-instruction-synthesizer-collection",
+        "config_name": "squad",
         "columns": ["context", "QA_list", "QA_type"],
         "task": "context_generation"
     },
@@ -55,7 +56,7 @@ datasets_config = [
     {
         "name": "Intel/orca_dpo_pairs",
         "columns": ["system", "question", "chosen", "rejected"],
-        "task": "reward_model_choice"
+        "task": "reward_model_choice_orca"
     },
     {
         "name": "codeparrot/codeparrot-clean",
@@ -95,11 +96,6 @@ datasets_config = [
     {
         "name": "TokenBender/code_instructions_122k_alpaca_style",
         "columns": ["instruction", "output", "text", "input"],
-        "task": "instruction_to_code_generation"
-    },
-    {
-        "name": "HydraLM/GPTeacher_codegen_alpaca",
-        "columns": ["input", "output"],
         "task": "instruction_to_code_generation"
     }
 ]
