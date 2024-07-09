@@ -1,6 +1,4 @@
-
-
-datasets_config = [
+'''
     {
         "name": "wikimedia/wikipedia",
         "version": "20231101.en",
@@ -12,6 +10,10 @@ datasets_config = [
         "columns": ["text"],
         "task": "next_token_prediction"
     },
+'''
+
+datasets_config = [
+
     {
         "name": "alespalla/chatbot_instruction_prompts",
         "columns": ["response", "prompt"],

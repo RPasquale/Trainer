@@ -1,4 +1,3 @@
-
 import torch
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, Trainer, TrainingArguments
@@ -39,28 +38,10 @@ def load_model(model_type, path):
         model = AutoModelForCausalLM.from_pretrained(path)
     return model
 
-def main(num_loops=1, dataset_name=None, model_type="gpt2"):
+def main(num_loops=5, dataset_name=None, model_type="gpt2"):
     model_save_path = r'C:\Users\Admin\MODELS\best_model.pt'
 
     for loop in range(num_loops):
-        # Load your custom model
-        model = load_model(model_type, model_save_path)
-        model.to(device)
-        
-        output_dir = "./results"
-        training_args = TrainingArguments(
-            output_dir=output_dir,
-            evaluation_strategy="epoch",
-            learning_rate=2e-5,
-            per_device_train_batch_size=4,
-            per_device_eval_batch_size=4,
-            num_train_epochs=1,
-            weight_decay=0.01,
-            save_steps=10_000,
-            save_total_limit=2,
-            remove_unused_columns=False,  # Ensure that no columns are removed
-        )
-
         if dataset_name:
             datasets_to_train = [config for config in datasets_config if config['name'] == dataset_name]
         else:
@@ -72,6 +53,12 @@ def main(num_loops=1, dataset_name=None, model_type="gpt2"):
         for config in datasets_to_train:
             print(f"Training on dataset: {config['name']} (Loop {loop+1})")
             dataset_config_name = config['name'].replace('/', '_')
+            output_dir = os.path.join("./results", dataset_config_name)
+            os.makedirs(output_dir, exist_ok=True)
+
+            # Load your custom model
+            model = load_model(model_type, model_save_path)
+            model.to(device)
 
             dataset, columns, task = load_dataset_by_config(config)
             processed_dataset = get_data_loader(dataset, columns, task)
@@ -84,6 +71,19 @@ def main(num_loops=1, dataset_name=None, model_type="gpt2"):
                 return tokenized_inputs
 
             tokenized_dataset = processed_dataset.map(tokenize_and_align_labels, batched=True, remove_columns=processed_dataset.column_names)
+
+            training_args = TrainingArguments(
+                output_dir=output_dir,
+                evaluation_strategy="epoch",
+                learning_rate=2e-5,
+                per_device_train_batch_size=4,
+                per_device_eval_batch_size=4,
+                num_train_epochs=10,  # Set to 10 epochs per dataset
+                weight_decay=0.01,
+                save_steps=10_000,
+                save_total_limit=2,
+                remove_unused_columns=False,  # Ensure that no columns are removed
+            )
 
             data_loader = DataLoader(tokenized_dataset, collate_fn=data_collator, batch_size=training_args.per_device_train_batch_size)
 
@@ -104,6 +104,22 @@ def main(num_loops=1, dataset_name=None, model_type="gpt2"):
                         loss_dict['eval_loss'].append(logs['eval_loss'])
                     super().on_log(args, state, control, logs, **kwargs)
 
+                def _save(self, output_dir=None, state_dict=None):
+                    if output_dir is None:
+                        output_dir = self.args.output_dir
+                    os.makedirs(output_dir, exist_ok=True)
+                    if state_dict is None:
+                        state_dict = self.model.state_dict()
+                    if isinstance(self.model, GPT):
+                        model_path = os.path.join(output_dir, "pytorch_model.bin")
+                        torch.save(state_dict, model_path)
+                    else:
+                        self.model.save_pretrained(output_dir, state_dict=state_dict)
+                    if self.tokenizer is not None:
+                        self.tokenizer.save_pretrained(output_dir)
+                    if self.args.push_to_hub:
+                        self._push_from_checkpoint(output_dir)
+
             trainer = CustomTrainer(
                 model=model,
                 args=training_args,
@@ -118,10 +134,9 @@ def main(num_loops=1, dataset_name=None, model_type="gpt2"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train GPT-2 on specified datasets.")
-    parser.add_argument('--num_loops', type=int, default=1, help='Number of loops of epochs to run.')
+    parser.add_argument('--num_loops', type=int, default=5, help='Number of loops of epochs to run.')
     parser.add_argument('--dataset_name', type=str, default=None, help='Name of the dataset to train on. If not specified, train on all datasets.')
     parser.add_argument('--model_type', type=str, default="gpt2", choices=["gpt2", "custom"], help='Type of model to use for training.')
 
     args = parser.parse_args()
     main(num_loops=args.num_loops, dataset_name=args.dataset_name, model_type=args.model_type)
-
