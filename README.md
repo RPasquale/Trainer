@@ -12,17 +12,6 @@ python train.py --dataset_name "alespalla/chatbot_instruction_prompts" --num_loo
 ### Datasets Available:
 
     {
-        "name": "wikimedia/wikipedia",
-        "version": "20231101.en",
-        "columns": ["text"],
-        "task": "next_token_prediction"
-    },
-    {
-        "name": "HuggingFaceFW/fineweb-edu",
-        "columns": ["text"],
-        "task": "next_token_prediction"
-    },
-    {
         "name": "alespalla/chatbot_instruction_prompts",
         "columns": ["response", "prompt"],
         "task": "response_generation"
