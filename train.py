@@ -1,3 +1,4 @@
+
 import torch
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, Trainer, TrainingArguments
@@ -23,37 +24,51 @@ def plot_losses(loss_dict, output_dir, dataset_name):
     plt.savefig(os.path.join(output_dir, f"{dataset_name}_loss.png"))
     plt.close()
 
-def main(num_loops=1, dataset_name=None, model_type="gpt2"):
-    # Load your custom model
+def save_model(model, path):
+    if isinstance(model, GPT):
+        model.save_weights(path)
+    else:
+        model.save_pretrained(path)
+
+def load_model(model_type, path):
     if model_type == "custom":
         model = GPT(GPTConfig(vocab_size=50304))
-        model.load_weights(r'C:\Users\Admin\MODELS\best_model.pt')
+        if os.path.exists(path):
+            model.load_weights(path)
     else:
-        model = AutoModelForCausalLM.from_pretrained("gpt2")
-    model.to(device)
-    output_dir = "./results"
-    training_args = TrainingArguments(
-        output_dir=output_dir,
-        evaluation_strategy="epoch",
-        learning_rate=2e-5,
-        per_device_train_batch_size=4,
-        per_device_eval_batch_size=4,
-        num_train_epochs=1,
-        weight_decay=0.01,
-        save_steps=10_000,
-        save_total_limit=2,
-        remove_unused_columns=False,  # Ensure that no columns are removed
-    )
+        model = AutoModelForCausalLM.from_pretrained(path)
+    return model
 
-    if dataset_name:
-        datasets_to_train = [config for config in datasets_config if config['name'] == dataset_name]
-    else:
-        datasets_to_train = datasets_config
-
-    if not datasets_to_train:
-        raise ValueError(f"No matching dataset found for name: {dataset_name}")
+def main(num_loops=1, dataset_name=None, model_type="gpt2"):
+    model_save_path = r'C:\Users\Admin\MODELS\best_model.pt'
 
     for loop in range(num_loops):
+        # Load your custom model
+        model = load_model(model_type, model_save_path)
+        model.to(device)
+        
+        output_dir = "./results"
+        training_args = TrainingArguments(
+            output_dir=output_dir,
+            evaluation_strategy="epoch",
+            learning_rate=2e-5,
+            per_device_train_batch_size=4,
+            per_device_eval_batch_size=4,
+            num_train_epochs=1,
+            weight_decay=0.01,
+            save_steps=10_000,
+            save_total_limit=2,
+            remove_unused_columns=False,  # Ensure that no columns are removed
+        )
+
+        if dataset_name:
+            datasets_to_train = [config for config in datasets_config if config['name'] == dataset_name]
+        else:
+            datasets_to_train = datasets_config
+
+        if not datasets_to_train:
+            raise ValueError(f"No matching dataset found for name: {dataset_name}")
+
         for config in datasets_to_train:
             print(f"Training on dataset: {config['name']} (Loop {loop+1})")
             dataset_config_name = config['name'].replace('/', '_')
@@ -99,7 +114,7 @@ def main(num_loops=1, dataset_name=None, model_type="gpt2"):
             trainer.evaluate()
 
             plot_losses(loss_dict, output_dir, dataset_config_name)
-            model.save_pretrained(os.path.join(output_dir, f"{dataset_config_name}_model"))
+            save_model(model, model_save_path)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train GPT-2 on specified datasets.")
@@ -109,3 +124,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     main(num_loops=args.num_loops, dataset_name=args.dataset_name, model_type=args.model_type)
+
